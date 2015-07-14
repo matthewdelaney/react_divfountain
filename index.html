@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>React DivFountain</title>
+		<script src="https://fb.me/react-0.13.3.js"></script>
+		<script src="https://fb.me/JSXTransformer-0.13.3.js"></script>
+		<script src="https://code.jquery.com/jquery-2.1.3.min.js"></script>
+		<style type="text/css">
+			.divfountain-cell {
+				position: absolute;
+				background-color: blue;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="content"></div>
+		<script type="text/jsx">
+                        var callBacks = [];
+                        setInterval(function() {
+                            for(var i = 0; i < callBacks.length; i++) {
+                                callBacks[i]();
+                            }
+                        }, 10);
+
+                        var cellStates = [];
+
+			var Cell = React.createClass({
+                                getInitialState: function() {
+                                    return {
+                                        cellLeft: this.props.cellLeft,
+                                        cellTop: this.props.cellTop,
+                                        cellWidth: this.props.cellWidth,
+                                        cellHeight: this.props.cellHeight
+                                    }
+                                },
+                                componentDidMount: function() {
+                                    if (!cellStates[this.props.i]) {
+                                        cellStates[this.props.i] = [];
+                                    }
+                                    cellStates[this.props.i][this.props.j] = this.state;
+                                    callBacks.push(this.pollState);
+                                },
+                                pollState: function() {
+                                    this.setState(cellStates[this.props.i][this.props.j]);
+                                },
+				render: function() {
+					var styleMap = {
+						left: this.state.cellLeft,
+						top: this.state.cellTop,
+						width: this.state.cellWidth,
+						height: this.state.cellHeight
+					}
+					return (
+			                    <div className="divfountain-cell" style={styleMap} onMouseOver={this.props.onMouseOver}/>
+					);
+				}
+			});
+
+			var Field = React.createClass({
+				handleMouseOver: function(i, j) {
+                                    // Find out where I am
+                                    var cells = this.cells;
+                        	    var x = parseInt(cells[i][j].props.cellLeft)-this.props.fieldLeft;
+		                    var y = parseInt(cells[i][j].props.cellTop)-this.props.fieldTop;
+
+		                    // Work out index of equivalent position in field
+		                    var fx = Math.round(x/this.props.cellWidth);
+		                    var fy = Math.round(y/this.props.cellHeight);
+
+                                    // Set pressure high to cause disruption to field
+		                    this.field[fx][fy].pressure = 500;
+				},
+				getInitialState: function() {
+					this.initializePhysicalField();
+
+					// TODO: Extract method
+					this.cells = new Array();
+					for(var i = 0; i < this.props.fieldWidth; i++) {
+						this.cells[i] = new Array();
+						for(var j = 0; j < this.props.fieldHeight; j++) {
+							var left = i*Number(this.props.cellWidth)+Number(this.props.fieldLeft) + "px";
+							var top = j*Number(this.props.cellHeight)+Number(this.props.fieldTop) + "px";
+                                                        var key = left + "," + top;
+							this.cells[i][j] = <Cell key={key} i={i} j={j} cellLeft={left} cellTop={top} cellWidth={this.props.cellWidth} cellHeight={this.props.cellHeight} onMouseOver={this.handleMouseOver.bind(this, i, j)}/>;
+						}
+					}
+
+					callBacks.push(this.moveDivs);
+
+					return null;
+				},
+				initializePhysicalField: function() {
+					// Initialise physical field and tempField (for working calculations)
+
+                                        var fieldSizeX = this.props.fieldWidth;
+                                        var fieldSizeY = this.props.fieldHeight;
+					this.field = [];
+					this.tempField = [];
+
+					// Populate physical field and tempField
+					for(var i = 0; i < fieldSizeX; i++)
+					{
+                                                this.field[i] = [];
+                                                this.tempField[i] = [];
+						for(var j = 0; j < fieldSizeY; j++)
+						{
+							this.field[i][j] = {xv: 0, yv: 0, pressure: 0};
+							this.tempField[i][j] = {xv: 0, yv: 0, pressure: 0};
+						}
+					}
+
+                                        this.finished = true;
+				},
+				processCell: function(i, j) {
+					var xvNew;
+					var yvNew;
+					var xpNew;
+					var ypNew;
+					var field = this.field;
+
+					xvNew = field[i][j].xv + (field[i-1][j-1].pressure*0.5 + field[i-1][j].pressure + field[i-1][j+1].pressure*0.5 - field[i+1][j-1].pressure*0.5 - field[i+1][j].pressure - field[i+1][j+1].pressure*0.5)*0.25;
+
+					yvNew = field[i][j].yv + (field[i-1][j-1].pressure*0.5 + field[i][j-1].pressure + field[i+1][j-1].pressure*0.5 - field[i-1][j+1].pressure*0.5 - field[i][j+1].pressure - field[i+1][j+1].pressure*0.5)*0.25;
+
+					xpNew = field[i-1][j-1].xv*0.5 + field[i-1][j].xv + field[i-1][j+1].xv*0.5 - field[i+1][j-1].xv*0.5 - field[i+1][j].xv - field[i+1][j+1].xv*0.5;
+
+					ypNew = field[i-1][j-1].yv*0.5 + field[i][j-1].yv + field[i+1][j-1].yv*0.5 - field[i-1][j+1].yv*0.5 - field[i][j+1].yv - field[i+1][j+1].yv*0.5;
+
+					var pressureNew = (xpNew + ypNew)*0.25;
+
+					return {xv: xvNew, yv: yvNew, pressure: pressureNew};
+				},
+				update: function() {
+					var tempField = this.tempField;
+
+					for(var i = 1; i < this.props.fieldWidth-1; i++)
+					{
+						for(var j = 1; j < this.props.fieldHeight-1; j++)
+						{
+							tempField[i][j] = this.processCell(i, j);
+						}
+					}
+					this.field = tempField;
+				},
+				moveDivs: function() {
+					var sqx = 0;
+					var sqy = 0;
+					var tx = 0;
+					var ty = 0;
+                                        var horizDivisor = 1; // Support multiple physical cells per Cell element in the future
+                                        var verticDivisor = 1;
+
+					// This function needs to be synchronous
+					if (this.finished) {
+						this.finished = false;
+						this.update();
+
+						for(var i = 0; i < this.props.fieldWidth; i++) // faster if value of numSquaresX is hard-coded here but that would cause maintenance problems
+						{
+							for(var j = 0; j < this.props.fieldHeight; j++) // faster if value of numSquaresY is hard-coded here but that would cause maintenance problems
+							{
+                                                                tx = parseInt(cellStates[i][j].cellLeft);
+                                                                ty = parseInt(cellStates[i][j].cellTop);
+
+								if (tx > this.props.fieldLeft && tx < this.props.fieldLeft + (this.props.fieldWidth*this.props.cellWidth) && ty > this.props.fieldTop && ty < this.props.fieldTop + (this.props.fieldHeight*this.props.cellHeight)) {
+									sqx = Math.round(i/horizDivisor);
+									sqy = Math.round(j/verticDivisor);
+                                                                        
+
+                                                                        var cellLeft = parseInt(cellStates[i][j].cellLeft) + Math.round(this.field[sqx][sqy].xv/1) + "px";
+                                                                        var cellTop = parseInt(cellStates[i][j].cellTop) + Math.round(this.field[sqx][sqy].yv/1) + "px";
+                                                                        var key = cellStates[i][j].cellLeft + "," + cellStates[i][j].cellTop;
+
+                                                                        cellStates[i][j].cellLeft = cellLeft;
+                                                                        cellStates[i][j].cellTop = cellTop;
+                                                                        cellStates[i][j].key = key;
+                                                                        
+								}
+							}
+						}
+						this.finished = true;
+					}
+				},
+				render: function() {
+					return (
+						<div>
+							{jQuery.map(this.cells, function(cell, i) {
+								return cell;
+							})
+							}
+						</div>
+					);
+				}
+			});
+
+			React.render(
+				<Field fieldWidth="25" fieldHeight="25" cellWidth="5" cellHeight="5" fieldLeft="180" fieldTop="180" />,
+				document.getElementById('content')
+			);
+		</script>
+	</body>
+</html>
